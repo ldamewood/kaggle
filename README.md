@@ -8,3 +8,7 @@ xgb.py scripts require installing the xgboost package wrapper
      $ make
      $ cd wrapper
      $ python setup.py install
+
+Other requirements in requirements.txt file
+
+     $ pip install -r requirements.txt

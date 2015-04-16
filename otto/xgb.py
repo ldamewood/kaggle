@@ -3,7 +3,6 @@
 from os.path import join, dirname, realpath
 
 import sys
-sys.path.append(join(dirname(realpath(__file__)), '..', 'libxgboost'))
 
 import otto
 import pandas as pd

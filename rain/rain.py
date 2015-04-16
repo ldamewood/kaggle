@@ -4,25 +4,17 @@ from __future__ import print_function, division
 
 from csv import DictReader
 from os.path import join, dirname, realpath
-from subprocess import check_call
 
 import pystats
 import pandas as pd
 import numpy as np
+import scipy.stats
+
+from kaggle import util
 
 datapath = join(dirname(realpath(__file__)), 'data')
 
-def records_groupby(dct, key):
-    curval = dct[key][0]
-    jstart = 0
-    for j in xrange(len(dct[key])):
-        if dct[key][j] != curval:
-            yield {k: [v[i] for i in range(jstart, j)] for k,v in dct.iteritems()}
-            jstart = j
-            curval = dct[key][j]
-    yield {k: [v[i] for i in range(jstart, j)] for k,v in dct.iteritems()}
-
-class KaggleRain:
+class RainCompetition:
 
     train = join(datapath, 'train_2013.csv')
     test = join(datapath, 'test_2014.csv')
@@ -32,7 +24,67 @@ class KaggleRain:
     not_features = [ 'Expected', 'Id' ]
     
     @classmethod
-    def process_csv_(cls, filepath, deriv = True):
+    def process_htypes_(cls, d):
+        """
+        Manually create HydrometeorType features.
+        """
+        htypes = ['no echo', 'moderate rain', 'moderate rain2', 'heavy rain',
+            'rain/hail', 'big drops', 'AP', 'Birds', 'unknown', 'no echo2',
+            'dry snow', 'wet snow', 'ice crystals', 'graupel', 'graupel2']
+        
+        # This part is akward. ;)
+        for ht in htypes:
+            d[ht] = []
+        for htval in d['HydrometeorType']:
+            for ht in htypes:
+                d[ht].append(True) if htypes[int(htval)] == ht else d[ht].append(False)
+        del d['HydrometeorType']
+    
+    @classmethod
+    def find_ignoreable_features_(cls, deriv = True, stdmin = 1.e-5):
+        size = util.wccount(cls.train) - 1
+        fstats = {}
+        for df in util.progress(cls.process_csv_(cls.train, deriv = deriv), size):
+            for key,val in df.iteritems():
+                if key not in fstats:
+                    fstats[key] = pystats.Accumulator()
+                for v in val:
+                    fstats[key].push(v)
+                # Update Accumulator to accept push(val)
+        return [key for key,col in fstats.iteritems() if col.std() < stdmin]
+
+    @classmethod
+    def load_data_(cls, filename, ignore_keys = [], deriv = True):
+        size = util.wccount(filename) - 1
+        for df in util.progress(cls.process_csv_(filename, deriv = deriv), size):
+            for key in ignore_keys:
+                del df[key]
+            yield pd.DataFrame(df)
+    
+    @classmethod
+    def load_dataframe(cls, train = True, ignore_keys = []):
+        return pd.concat(cls.load_data_(cls.train if train else cls.test,
+                                        ignore_keys = ignore_keys))
+
+    @classmethod
+    def group_data_(cls, records):
+        for r in records:
+            for grp in util.records_groupby(r, 'group'):
+                df = {}
+                t = grp['TimeToEnd']
+                for k,v in grp.iteritems():
+                    df['{}_mean'.format(k)] = np.mean(v)
+                    df['{}_std'.format(k)] = np.std(v)
+                    df['{}_min'.format(k)] = np.min(v)
+                    df['{}_max'.format(k)] = np.max(v)
+                    df['{}_range'.format(k)] = np.max(v) - np.min(v)
+                    slope, intercept, r_value, p_value, std_err = scipy.stats.linregress(v,t)
+                    df['{}_slope'.format(k)] = slope
+                    df['{}_intercept'.format(k)] = intercept
+                yield df
+
+    @classmethod
+    def process_csv_(cls, filepath, deriv = True, group = True):
         """
         Process the csv file and do transformations:
             * Split the time series.
@@ -86,58 +138,34 @@ class KaggleRain:
             cls.process_htypes_(d)
     
             yield d
-    
-    @classmethod
-    def process_htypes_(cls, d):
-        """
-        Manually create HydrometeorType features.
-        """
-        htypes = ['no echo', 'moderate rain', 'moderate rain2', 'heavy rain',
-            'rain/hail', 'big drops', 'AP', 'Birds', 'unknown', 'no echo2',
-            'dry snow', 'wet snow', 'ice crystals', 'graupel', 'graupel2']
-        
-        # This part is akward. ;)
-        for ht in htypes:
-            d[ht] = []
-        for htval in d['HydrometeorType']:
-            for ht in htypes:
-                d[ht].append(True) if htypes[int(htval)] == ht else d[ht].append(False)
-        del d['HydrometeorType']
-    
-    @classmethod
-    def find_ignoreable_features_(cls, filename, deriv = True, stdmin = 1.e-5):
-        fstats = {}
-        for i,df in enumerate(cls.process_csv_(filename, deriv = deriv)):
-            for key,val in df.iteritems():
-                if key not in fstats: fstats[key] = pystats.Accumulator()
-                for v in val: fstats[key].push(v)
-            if i%1000 == 0:
-                print('Iteration #{}'.format(i))
-        return [col for key,col in fstats.iteritems() if col.std() < stdmin]
 
-def group_and_mean(array, group_ids, logit = False):
-    """
-    Group by "group_ids" and take the mean.
-    can this be easily done without pandas? Of course!
-    """
-    
-    # Check if ids are given in sorted order
-    #assert sum([group_ids[i] != j for i,j in enumerate(sorted(group_ids))]) == 0
-    df = pd.DataFrame(array)
-    df['Group'] = group_ids
-    if logit:
-        return np.array(df.groupby('Group').agg(lambda x: 1./(1+np.exp(-np.mean(np.log(x/(1-x)))))))
-    else:
-        return np.array(df.groupby('Group').mean())
-
-def score_crp(y_pred, y_real, ids):
-    """
-    Gives the score based on the classification probability and expected values.
-    """
-    yp = np.array(group_and_mean(y_pred, ids)).cumsum(axis=1)
-    ya = np.array(group_and_mean(y_real, ids)).flatten()
-    x = range(70)
-    return np.array([(yp[:,n] - (n >= ya))**2 for n in x]).T / len(x) / len(ya)       
+#def group_and_mean(array, group_ids, logit = False):
+#    """
+#    Group by "group_ids" and take the mean.
+#    can this be easily done without pandas? Of course!
+#    """
+#    
+#    # Check if ids are given in sorted order
+#    #assert sum([group_ids[i] != j for i,j in enumerate(sorted(group_ids))]) == 0
+#    df = pd.DataFrame(array)
+#    df['Group'] = group_ids
+#    if logit:
+#        return np.array(df.groupby('Group').agg(lambda x: 1./(1+np.exp(-np.mean(np.log(x/(1-x)))))))
+#    else:
+#        return np.array(df.groupby('Group').mean())
+#
+#def score_crp(y_pred, y_real, ids):
+#    """
+#    Gives the score based on the classification probability and expected values.
+#    """
+#    yp = np.array(group_and_mean(y_pred, ids)).cumsum(axis=1)
+#    ya = np.array(group_and_mean(y_real, ids)).flatten()
+#    x = range(70)
+#    return np.array([(yp[:,n] - (n >= ya))**2 for n in x]).T / len(x) / len(ya)       
 
 if __name__ == '__main__':
-    ignore = KaggleRain.find_ignoreable_features_(KaggleRain.train)
+    print('Pass #1: Search for bad features')
+    ignore = RainCompetition.find_ignoreable_features_()
+    print('Pass #2: Load data into DataFrame object')
+    train_df = RainCompetition.load_dataframe(train=True, ignore_keys=ignore)
+#print(util.wccount(RainCompetition.train))

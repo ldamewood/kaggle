@@ -10,11 +10,7 @@ Try to be memory efficient by deleting variables that are no longer needed: it
 requires around 32GB of ram depending on the number of extra features.
 """
 
-from os.path import join, dirname, realpath
-
-import sys
-sys.path.append(join(dirname(realpath(__file__)), '..','libxgboost'))
-
+from os.path import join
 import random
 
 import xgboost as xgb
