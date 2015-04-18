@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import print_function, division
 
-from csv import DictReader
 from os.path import join, dirname, realpath
 
 import pystats
@@ -10,18 +9,73 @@ import pandas as pd
 import numpy as np
 import scipy.stats
 
-from kaggle import util
-
-datapath = join(dirname(realpath(__file__)), 'data')
+from kaggle.util import ProgressDictReader
+from subprocess import check_call
 
 class RainCompetition:
+    __name__ = 'how-much-did-it-rain'
+    __train__ = join(dirname(realpath(__file__)), 'data', 'train_2013.csv')
+    __test__ = join(dirname(realpath(__file__)), 'data', 'test_2014.csv')
 
-    train = join(datapath, 'train_2013.csv')
-    test = join(datapath, 'test_2014.csv')
-    
     nan = float('nan')
     nan_values = [ -99900.0, -99901.0, -99903.0, 999.0, float('nan') ]
     not_features = [ 'Expected', 'Id' ]
+
+    @classmethod
+    def read_csv_(cls, filename, deriv=True, group=True, ignore_keys=[]):
+        """
+        Process the csv file and do transformations:
+            * Split the time series.
+            * Standardize the NAN values. This must be done before taking the
+              derivative, otherwise the derivative may be a number when it should
+              be nan.
+            * Calculate time derivatives if deriv == True.
+            * Add NAN categories (removed)
+        """
+
+        for row in ProgressDictReader(open(filename, 'r')):
+            # Extract the time series
+            ntime = len(row['TimeToEnd'].split())
+    
+            # Split the row into a time series
+            record = {}
+            for key, value in row.iteritems():
+                if key in ignore_keys: continue
+                if len(value.split()) > 1:
+                    record[key] = map(float, value.split())
+                else:
+                    # Rows that contain a common value for all time steps
+                    record[key] = ntime * [float(value)]
+            
+            x = record['TimeToEnd']
+            dx = [x[i] - x[i-1] for i in xrange(ntime)]
+    
+            # Add group index
+            j = 0
+            record['Group'] = []
+            for i in xrange(ntime):
+                if dx[i] > 0: j+=1
+                record['Group'].append(j)
+            
+            for f, value in record.items():
+                # Skip Id and Expected columns
+                if f in cls.not_features: continue
+                
+                # Convert values to float or nan
+                record[f] = [float('nan') if v in cls.nan_values else v for v in value]
+                
+                if deriv:
+                    # Don't take derivative of some features
+                    if f in [ 'TimeToEnd', 'HydrometeorType' ]: continue
+                    
+                    # Segment may contain multiple time series. They are separated 
+                    # by an increase in the TimeToEnd value. If dx < 0, then
+                    # take the derivative, otherwise make dy/dx = 0.
+                    record['{}_deriv'.format(f)] = [(value[i] - value[i-1])/dx[i] if dx[i] < 0 else 0 for i in range(ntime)]
+            
+            cls.process_htypes_(record)
+    
+            yield record    
     
     @classmethod
     def process_htypes_(cls, d):
@@ -41,32 +95,6 @@ class RainCompetition:
         del d['HydrometeorType']
     
     @classmethod
-    def find_ignoreable_features_(cls, deriv = True, stdmin = 1.e-5):
-        size = util.wccount(cls.train) - 1
-        fstats = {}
-        for df in util.progress(cls.process_csv_(cls.train, deriv = deriv), size):
-            for key,val in df.iteritems():
-                if key not in fstats:
-                    fstats[key] = pystats.Accumulator()
-                for v in val:
-                    fstats[key].push(v)
-                # Update Accumulator to accept push(val)
-        return [key for key,col in fstats.iteritems() if col.std() < stdmin]
-
-    @classmethod
-    def load_data_(cls, filename, ignore_keys = [], deriv = True):
-        size = util.wccount(filename) - 1
-        for df in util.progress(cls.process_csv_(filename, deriv = deriv), size):
-            for key in ignore_keys:
-                del df[key]
-            yield pd.DataFrame(df)
-    
-    @classmethod
-    def load_dataframe(cls, train = True, ignore_keys = []):
-        return pd.concat(cls.load_data_(cls.train if train else cls.test,
-                                        ignore_keys = ignore_keys))
-
-    @classmethod
     def group_data_(cls, records):
         for r in records:
             for grp in util.records_groupby(r, 'group'):
@@ -81,91 +109,51 @@ class RainCompetition:
                     slope, intercept, r_value, p_value, std_err = scipy.stats.linregress(v,t)
                     df['{}_slope'.format(k)] = slope
                     df['{}_intercept'.format(k)] = intercept
-                yield df
+                yield df    
+    
+    @classmethod
+    def find_ignorable_features(cls, deriv=True, group=False, stdmin=1.e-5):
+        fstats = {}
+        for df in cls.read_csv_(cls.__train__, deriv=deriv):
+            for key,val in df.iteritems():
+                if key not in fstats:
+                    fstats[key] = pystats.Accumulator()
+                for v in val:
+                    fstats[key].push(v)
+                # TODO: Update Accumulator to accept push(val)
+        return [key for key,col in fstats.iteritems() if col.std() < stdmin]
 
     @classmethod
-    def process_csv_(cls, filepath, deriv = True, group = True):
-        """
-        Process the csv file and do transformations:
-            * Split the time series.
-            * Standardize the NAN values. This must be done before taking the
-              derivative, otherwise the derivative may be a number when it should
-              be nan.
-            * Calculate time derivatives if deriv == True.
-            * Add NAN categories (removed)
-        """
-        # features that cannot have nan and are not used in poly2 or deriv
-        
-        for row in DictReader(open(filepath)):
-            # Extract the time series
-            ntime = len(row['TimeToEnd'].split())
-    
-            # Split the row into a time series
-            d = {}
-            for key, value in row.iteritems():
-                if len(value.split()) > 1:
-                    d[key] = map(float, value.split())
-                else:
-                    # Rows that contain a common value for all time steps
-                    d[key] = ntime * [float(value)]
-            
-            x = d['TimeToEnd']
-            dx = [x[i] - x[i-1] for i in xrange(ntime)]
-    
-            # Add group index
-            j = 0
-            d['Group'] = []
-            for i in xrange(ntime):
-                if dx[i] > 0: j+=1
-                d['Group'].append(j)
-            
-            for f, value in d.items():
-                # Skip Id and Expected columns
-                if f in cls.not_features: continue
-                
-                # Convert values to float or nan
-                d[f] = [float('nan') if v in cls.nan_values else v for v in value]
-                
-                if deriv:
-                    # Don't take derivative of some features
-                    if f in [ 'TimeToEnd', 'HydrometeorType' ]: continue
-                    
-                    # Segment may contain multiple time series. They are separated 
-                    # by an increase in the TimeToEnd value. If dx < 0, then
-                    # take the derivative, otherwise make dy/dx = 0.
-                    d['{}_deriv'.format(f)] = [(value[i] - value[i-1])/dx[i] if dx[i] < 0 else 0 for i in range(ntime)]
-            
-            cls.process_htypes_(d)
-    
-            yield d
+    def read_df_(cls, train=True, ignore_keys=[], deriv=True, group=False):
+        for df in cls.read_csv_(cls.__train__ if train else cls.__test__,
+                                deriv=deriv, group=group,
+                                ignore_keys=ignore_keys):
+            yield pd.DataFrame(df)
 
-#def group_and_mean(array, group_ids, logit = False):
-#    """
-#    Group by "group_ids" and take the mean.
-#    can this be easily done without pandas? Of course!
-#    """
-#    
-#    # Check if ids are given in sorted order
-#    #assert sum([group_ids[i] != j for i,j in enumerate(sorted(group_ids))]) == 0
-#    df = pd.DataFrame(array)
-#    df['Group'] = group_ids
-#    if logit:
-#        return np.array(df.groupby('Group').agg(lambda x: 1./(1+np.exp(-np.mean(np.log(x/(1-x)))))))
-#    else:
-#        return np.array(df.groupby('Group').mean())
-#
-#def score_crp(y_pred, y_real, ids):
-#    """
-#    Gives the score based on the classification probability and expected values.
-#    """
-#    yp = np.array(group_and_mean(y_pred, ids)).cumsum(axis=1)
-#    ya = np.array(group_and_mean(y_real, ids)).flatten()
-#    x = range(70)
-#    return np.array([(yp[:,n] - (n >= ya))**2 for n in x]).T / len(x) / len(ya)       
+    @classmethod
+    def load_data(cls, train=True, ignore_keys=[], deriv=True, group=False):
+        return pd.concat(cls.read_df_(train=train, ignore_keys=ignore_keys,
+                                      deriv=deriv, group=group))
+
+    @classmethod
+    def save_data(cls, df, filename):
+        df.to_csv(filename, index = False)
+        check_call(['gzip', '-f',  filename])
+        
+    @classmethod
+    def score(cls, yp, yr):
+        x = range(70)
+        return np.array([(yp[:,n] - (n >= yr))**2 for n in x]).T / len(x) / len(yr)     
 
 if __name__ == '__main__':
-    print('Pass #1: Search for bad features')
-    ignore = RainCompetition.find_ignoreable_features_()
-    print('Pass #2: Load data into DataFrame object')
-    train_df = RainCompetition.load_dataframe(train=True, ignore_keys=ignore)
-#print(util.wccount(RainCompetition.train))
+    print("Pass #1: Find ignorable features")
+    ignore_keys = RainCompetition.find_ignorable_features()
+    print("Pass #2: Loading training data")
+    train_df = RainCompetition.load_data(train=True, ignore_keys=ignore_keys)
+    print("Saving new training data")
+    RainCompetition.save_data(train_df, join('data', 'train_with_deriv.csv'), index=False)
+    print("Loading testing data")
+    test_df = RainCompetition.load_data(train=False, ignore_keys=ignore_keys)
+    print("Saving testing data")
+    RainCompetition.save_data(test_df, join('data', 'test_with_deriv.csv'), index=False)
+    print("Complete!")
