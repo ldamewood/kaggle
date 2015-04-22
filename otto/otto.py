@@ -43,22 +43,32 @@ class OttoCompetition:
             check_call(['gzip', outfile])
 
 class OttoTransform:
-    def __init__(self):
-        self.normalizer_ = None
+    def __init__(self, rescale = False):
+        self.rescale = rescale
+
+    def get_params(self, deep=True):
+        return { 'rescale': self.rescale }
+    
+    def set_params(self, **parameters):
+        if 'rescale' in parameters:
+            self.rescale = parameters['rescale']
+        return self
+
+    def fit(self, X, y=None):
+        self.transform(X)
+        return self
+
+    def fit_transform(self, X, y=None):
+        return self.transform(X)
 
     def transform(self, df):
         X = df.copy()
 
-        normalize = [c for c in X.columns if c[0] == 'f']
+        normalize = [c for c in X.columns if c[:5] == 'feat_']
 
         # Rescale parameters
-        X[normalize] = np.log(1.+X[normalize])
-
-        # Normalize these columns
-        if self.normalizer_ is None:
-            self.normalizer_ = MinMaxScaler()
-            self.normalizer_.fit(X[normalize].values)
-        X[normalize] = self.normalizer_.transform(X[normalize].values)
+        if self.rescale:
+            X[normalize] = np.log(1.+X[normalize])
 
         return X
 

@@ -2,10 +2,33 @@
 
 import pandas as pd
 from datetime import datetime, date
+import numpy as np
 
 import matplotlib as mpl
 mpl.use('Agg')
 import matplotlib.pyplot as plt
+
+class RemoveVarianceless:
+    def __init__(self, minvar=1.e-8):
+        self.minvar = minvar
+        self.varianceless_rows_ = []
+
+    def get_params(self, deep=True):
+        return {'minvar': self.minvar}
+    
+    def set_params(self, **parameters):
+        self.minvar = parameters['minvar']
+        return self
+
+    def fit(self, X, y=None):
+        self.varianceless_rows_ = [i for i,j in enumerate(X.var(axis=0)) if j < self.minvar]
+
+    def fit_transform(self, X, y=None):
+        self.fit(X, y)
+        return self.transform(X)
+
+    def transform(self, X, y=None):
+        return np.delete(X, self.varianceless_rows_, 1)
 
 def records_groupby(dct, key):
     """

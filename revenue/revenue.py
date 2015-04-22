@@ -13,7 +13,7 @@ from subprocess import check_call
 
 from sklearn.feature_extraction import DictVectorizer
 from sklearn.ensemble import GradientBoostingRegressor, BaggingRegressor
-from sklearn.preprocessing import MinMaxScaler
+from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from sklearn.pipeline import Pipeline
 from sklearn.neural_network import BernoulliRBM
 from sklearn.grid_search import RandomizedSearchCV
@@ -38,28 +38,45 @@ class RevenueCompetition:
         if gzip:
             check_call(['gzip', outfile])
 
-
 class RevenueTransform:
-    def __init__(self):
+    def __init__(self, rescale = False):
         self.dictVectorizer_ = None
-        self.normalizer_ = None
+        self.rescale = rescale
 
-    def transform(self, df):
+    def get_params(self, deep=True):
+        return { 'rescale': self.rescale }
+    
+    def set_params(self, **parameters):
+        if 'rescale' in parameters:
+            self.rescale = parameters['rescale']
+        return self
+
+    def fit(self, X, y=None):
+        self.dictVectorizer_ = None
+        self.transform(X)
+        return self
+
+    def fit_transform(self, df, y=None):
+        self.dictVectorizer_ = None
+        return self.transform(df)
+
+    def transform(self, df, y=None):
         X = df.copy()
 
-        # Unix timestamp of date
-        X['Timestamp'] = X['Open Date'].apply(lambda x: mktime(dt.strptime(x, "%m/%d/%Y").timetuple()))
+        # Unix timestamp of date (subtracted from Jan 1, 2015)
+        X['Timestamp'] = X['Open Date'].apply(lambda x: 1420099200.0 - mktime(dt.strptime(x, "%m/%d/%Y").timetuple()))
 
         # The season
-        X['Season'] = X['Open Date'].apply(lambda x: util.get_season(dt.strptime(x, "%m/%d/%Y")))
+#        X['Season'] = X['Open Date'].apply(lambda x: util.get_season(dt.strptime(x, "%m/%d/%Y")))
 
         # Rescale parameters
-        X[[c for c in X.columns if c[0] == 'P']] = np.log(1.+X[[c for c in X.columns if c[0] == 'P']])
+        if self.rescale:
+            X[[c for c in X.columns if c[0] == 'P']] = np.log(1.+X[[c for c in X.columns if c[0] == 'P']])
 
         del X['Open Date']
 
         # Vectorize these columns
-        vectorize = ['Type','Season','City','City Group']
+        vectorize = ['Type','City','City Group']
 
         if self.dictVectorizer_ is None:
             self.dictVectorizer_ = DictVectorizer(sparse=False)
@@ -69,46 +86,4 @@ class RevenueTransform:
             del X[col]
         X = X.join(pd.DataFrame(res, columns=self.dictVectorizer_.get_feature_names()))
 
-        # Normalize these columns
-        normalize = [c for c in X.columns if c[0] == 'P'] + ['Timestamp']
-        if self.normalizer_ is None:
-            self.normalizer_ = MinMaxScaler()
-            self.normalizer_.fit(X[normalize].values)
-        res = self.normalizer_.transform(X[normalize].values)
-        for col in normalize:
-            del X[col]
-        X = X.join(pd.DataFrame(res, columns=normalize))
-
         return X
-
-# Grid search parameters
-params = dict(
-    nn__learning_rate=[0.0001,0.001,0.01,0.1],
-    nn__n_components=sp_randint(5,15),
-    nn__n_iter=sp_randint(10,1000),
-    nn__random_state=[0],
-    gb__n_estimators=sp_randint(10,1000),
-    gb__max_depth=sp_randint(5,15),
-    gb__min_samples_split=sp_randint(1,5),
-    gb__learning_rate=[0.0001,0.001,0.01,0.1],
-    gb__loss=['ls', 'lad', 'huber'],
-    gb__random_state=[0],
-)
-
-if __name__ == '__main__':
-    tr = RevenueTransform()
-    train_df = tr.transform(RevenueCompetition.load_data())
-    cv = RandomizedSearchCV(Pipeline([('nn',BernoulliRBM()),
-                                      ('gb',GradientBoostingRegressor())]),
-                            params, n_iter=20, verbose=True, cv=10, n_jobs=-1)
-
-    reg = BaggingRegressor(cv, n_estimators=200, oob_score=True,
-                           verbose=True, random_state=0)
-    y = train_df['revenue'].values
-    del train_df['revenue']
-    X = train_df.values
-    reg.fit(X,y)
-    
-    test_df = tr.transform(RevenueCompetition.load_data(train=False))
-    y_pred = np.exp(reg.predict(test_df.values))
-    RevenueCompetition.save_data(y_pred, 'data/submit_20150417_1.csv')
