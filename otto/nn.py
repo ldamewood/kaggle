@@ -49,7 +49,7 @@ layers0 = [('input', InputLayer),
            ('dropout1', DropoutLayer),
            ('dense2', DenseLayer),
 #           ('dropout2', DropoutLayer),
-#           ('dense3', DenseLayer),
+           ('dense3', DenseLayer),
 #           ('dropout3', DropoutLayer),
 #           ('dense4', DenseLayer),
            ('output', DenseLayer)]
@@ -85,17 +85,17 @@ if __name__ == '__main__':
     np.random.seed(0)
     net0 = NeuralNet(layers=layers0,
                      input_shape=(None, num_features),
-                     dense1_num_units=400,
-                     dropout1_p=0.1,
-                     dense2_num_units=400,
+                     dense1_num_units=200,
+                     dropout1_p=0.5,
+                     dense2_num_units=200,
 #                     dropout2_p=0.2,
-#                     dense3_num_units=400,
+                     dense3_num_units=100,
 #                     dropout3_p=0.4,
 #                     dense4_num_units=800,
                      output_num_units=num_classes,
                      output_nonlinearity=softmax,
                      update=adagrad,
-                     eval_size=0.2,
+                     eval_size=0.5,
                      verbose=1,
                      update_learning_rate=theano.shared(float32(0.001)),
 #                     update_momentum=theano.shared(float32(0.9)),
@@ -103,6 +103,6 @@ if __name__ == '__main__':
                          AdjustVariable('update_learning_rate', start=0.001, stop=0.0001),
 #                         AdjustVariable('update_momentum', start=0.9, stop=0.999),
                      ],
-                     max_epochs=1000,)
+                     max_epochs=10000,)
     
     net0.fit(X,y)
