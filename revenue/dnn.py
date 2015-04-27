@@ -99,11 +99,11 @@ if __name__ == '__main__':
     np.random.seed(0)
     net0 = NeuralNet(layers=layers0,
                      input_shape=(None, X.shape[1]),
-                     dense1_num_units=400,
+                     dense1_num_units=512,
 #                     dropout1_p=0.5,
-#                     dense2_num_units=400,
+#                     dense2_num_units=512,
 #                     dropout2_p=0.5,
-#                     dense3_num_units=111,
+#                     dense3_num_units=512,
 #                     dropout3_p=0.5,
 #                     dense4_num_units=1600,
                      regression=True,
@@ -112,21 +112,22 @@ if __name__ == '__main__':
                      update=nesterov_momentum,
                      eval_size=0.1,
                      verbose=1,
-                     update_learning_rate=theano.shared(float32(0.01)),
+                     update_learning_rate=theano.shared(float32(0.000001)),
                      update_momentum=theano.shared(float32(0.9)),
                      on_epoch_finished=[
-                         AdjustVariable('update_learning_rate', start=0.01, stop=0.00001),
-                         AdjustVariable('update_momentum', start=0.9, stop=0.999),
+#                         AdjustVariable('update_learning_rate', start=0.01, stop=0.00001),
+#                         AdjustVariable('update_momentum', start=0.9, stop=0.999),
                      ],
-                     max_epochs=30000,)
+                     max_epochs=10,)
     
     y.shape = (y.shape[0],1)
     y = y.astype('float32')
+    X = X.astype('float32')
     net0.fit(X,y)
     
-    print('Training')
-    data = X
-    model = RnnRbm()
-    model.train(Xl, batch_size=1, num_epochs=200)
-    print(model.generate())
+#    print('Training')
+#    data = X
+#    model = RnnRbm()
+#    model.train(Xl, batch_size=1, num_epochs=200)
+#    print(model.generate())
 

@@ -101,14 +101,14 @@ class RevenueTransform:
 
         for city in city_count.index.values:
             X.loc[(X['City'] == city),'In Same City'] = city_count.loc[city].values - 1
-            
+#            
         for city,typ in city_and_type_count.index.values:
             X.loc[(X['City'] == city) & (X['Type'] == typ),'Same Type In City'] = city_and_type_count.loc[(city,typ)].values - 1
 
         # The season
 #        X['Season'] = X['Open Date'].apply(lambda x: util.get_season(dt.strptime(x, "%m/%d/%Y")))
         
-        X['Month'] = X['Open Date'].apply(lambda x: dt.strptime(x, "%m/%d/%Y").month)
+        X['Month'] = X['Open Date'].apply(lambda x: str(dt.strptime(x, "%m/%d/%Y").month))
 
         # Rescale parameters
         if self.rescale:
@@ -119,10 +119,9 @@ class RevenueTransform:
         X['Timestamp'] = np.log(X['Timestamp'])
 
         del X['Open Date']
-#        del X['City']
 
         # Vectorize these columns
-        vectorize = ['Type','City','City Group','Month']
+        vectorize = ['Type','City Group','Month']# 'City'
 
         if self.dictVectorizer_ is None:
             self.dictVectorizer_ = DictVectorizer(sparse=False)
@@ -132,4 +131,5 @@ class RevenueTransform:
             del X[col]
         X = X.join(pd.DataFrame(res, columns=self.dictVectorizer_.get_feature_names()))
 
+        del X['City']
         return X
