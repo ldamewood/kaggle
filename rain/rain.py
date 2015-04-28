@@ -60,11 +60,12 @@ class RainCompetition:
         dx = [x[i] - x[i-1] for i in xrange(ntime)]
         
         # Add group index
-        j = 0
+        j = -1
         record['Group'] = []
         for i in xrange(ntime):
-            if dx[i] < 0: j+=1
+            if dx[i] > 0: j+=1
             record['Group'].append(j)
+        record['Index'] = range(ntime)
         
         for f, value in record.items():
             # Skip Id and Expected columns
@@ -74,7 +75,7 @@ class RainCompetition:
             
             if deriv:
                 # Don't take derivative of some features
-                if f in [ 'TimeToEnd', 'HydrometeorType' ]: continue
+                if f in [ 'TimeToEnd', 'HydrometeorType', 'Group', 'Index', 'Id' ]: continue
                 
                 # Segment may contain multiple time series. They are separated 
                 # by an increase in the TimeToEnd value. If dx < 0, then
@@ -141,11 +142,11 @@ class RainCompetition:
     def process_df(cls, outfile, train=True, ignore_keys=[], deriv=True, group=False):
         with open(outfile, 'w') as out:
             for i, chunk in enumerate(cls.read_csv_(RainCompetition.__train__ if train else RainCompetition.__test__, ignore_keys=ignore_keys, deriv=deriv, group=group)):
-                chunk.set_index(['Id','Group'], inplace=True)
+                chunk.set_index(['Id', 'Group', 'Index'], inplace=True)
                 if i==0: 
-                    chunk.to_csv(out, index_label=['Id','Group'], header=True)
+                    chunk.to_csv(out, float_format='%e', index_label=['Id', 'Group', 'Index'], header=True)
                 else:
-                    chunk.to_csv(out, index_label=['Id','Group'], header=False)
+                    chunk.to_csv(out, float_format='%e', index_label=['Id', 'Group', 'Index'], header=False)
 #        check_call(['gzip', '-f', outfile])
 #                    
 #
@@ -168,15 +169,15 @@ class RainCompetition:
 #        
     @classmethod
     def collapse(cls, y, ids):
-        cols = ['Predicted{}'.format(i) for i in range(71)]
+        cols = ['Predicted{}'.format(i) for i in range(y.shape[1])]
         cols.append('Id')
-        df = pd.DataFrame(np.hstack(y, ids), columns=cols)
-        return df.groupby('Id').mean()
+        df = pd.DataFrame(np.hstack([y, ids]), columns=cols)
+        return df.groupby('Id').mean().values
         
     @classmethod
-    def score(cls, yp, yr):
+    def score(cls, ypred, ytrue):
         x = range(70)
-        return np.array([(yp[:,n] - (n >= yr))**2 for n in x]).T / len(x) / len(yr)             
+        return np.array([(ypred[:,n] - (n >= ytrue[:,0]))**2 for n in x]).sum()/len(x)/len(ytrue)
 
 if __name__ == '__main__':
     print("Pass #2: Processing training data")

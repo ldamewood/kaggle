@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from otto import OttoCompetition, OttoTransform
+from otto import OttoCompetition
 import numpy as np
 from sklearn.cross_validation import StratifiedKFold
 #from sklearn.metrics import log_loss
@@ -38,19 +38,11 @@ def train_xgboost(train_X, train_y, valid_X, valid_y, rounds = 1000):
     return bst, evals
 
 if __name__ == '__main__':
-    train_df = OttoCompetition.load_data()
-    labels = train_df['target']
-    del train_df['target']
     encoder = LabelEncoder()
-    y = encoder.fit_transform(labels).astype(np.int32)
-
-    test_df = OttoCompetition.load_data(train=False)
-
-    full_df = train_df.append(test_df)
-    
-    tr = OttoTransform(rescale=False)
-    tr.fit(full_df)    
-    X = tr.transform(train_df).values
+    X, y = OttoCompetition.load_data(train=True)
+    y = encoder.fit_transform(y).astype('int32')
+    num_classes = len(encoder.classes_)
+    num_features = X.shape[1]
 
     bags, losses = [], []
     n_folds = 10
@@ -66,10 +58,11 @@ if __name__ == '__main__':
     losses = np.array(losses, dtype='float')
     print(np.mean(losses), np.std(losses))
 
-#    X_test = xgb.DMatrix(tr.transform(test_df).values)
-#    y_preds = []
-#    for bag in bags:
-#        y_preds.append(bag.predict(X_test))
-#    y_pred = sum(y_preds)/n_folds
+    X_test, _ = OttoCompetition.load_data(train=False)
+    X_test = xgb.DMatrix(X_test)
+    y_preds = []
+    for bag in bags:
+        y_preds.append(bag.predict(X_test))
+    y_pred = sum(y_preds)/n_folds
 
-#    OttoCompetition.save_data(y_pred, 'data/otto_submit_20150424_2.csv')
+    OttoCompetition.save_data(y_pred)

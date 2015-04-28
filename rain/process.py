@@ -8,12 +8,12 @@ htypes = ['no echo', 'moderate rain', 'moderate rain2', 'heavy rain',
 
 def impute(infile, outfile):
     print('Loading data...')
-    df = pd.read_csv(infile, index_col=['Id', 'Group'])
+    df = pd.read_csv(infile, index_col=['Id', 'Group', 'Index'])
 
     print('Removing features without variance:')
     remove = []
     for col in df.columns:
-        if col in ['Id','Group','Expected']:
+        if col in ['Id','Group','Index','Expected']:
             continue
         print(col)
         if col in htypes:
@@ -25,16 +25,16 @@ def impute(infile, outfile):
             print('Removing column {}'.format(col))
             del df[col]
 
-    df.to_csv(outfile, index_label=['Id','Group'], header=True)
+    df.to_csv(outfile, index_label=['Id','Group','Index'], header=True)
 
 def normalize(infile, outfile):
     print('Loading data...')
-    df = pd.read_csv(infile, index_col=['Id', 'Group'])
+    df = pd.read_csv(infile, index_col=['Id','Group','Index'])
 
     print('Removing features without variance:')
     remove = []
     for col in df.columns:
-        if col in ['Id','Group','Expected']:
+        if col in ['Id','Group','Index','Expected']:
             continue
         print(col)
         if col in htypes:
@@ -52,10 +52,10 @@ def normalize(infile, outfile):
         std = df[col].std()
         df[col] = (df[col] - mean)/std
 
-    df.to_csv(outfile, index_label=['Id','Group'], header=True)
+    df.to_csv(outfile, index_label=['Id','Group','Index'], header=True)
 
 if __name__ == '__main__':
-#    impute('data/train_split_rows.csv', 'data/train_with_impute.csv')
+    impute('data/train_split_rows.csv', 'data/train_with_impute.csv')
     normalize('data/train_split_rows.csv', 'data/train_normalize.csv')
-#    impute('data/test_split_rows.csv', 'data/test_with_impute.csv')
+    impute('data/test_split_rows.csv', 'data/test_with_impute.csv')
     normalize('data/test_split_rows.csv', 'data/test_normalize.csv')

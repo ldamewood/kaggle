@@ -1,8 +1,18 @@
 # -*- coding: utf-8 -*-
 
+import pandas as pd
+
 class WalmartCompetition:
-    pass
+    __name__ = 'walmart'
+    __data__ = {
+        'train' : 'data/train.csv',
+        'test' : 'data/test.csv',
+        'key' : 'data/key.csv',
+        'weather' : 'data/weather.csv'
+    }
 
 if __name__ == '__main__':
-    train = 'data/train.csv'
-    key = 'data/key.csv'
+    
+    train = pd.read_csv(WalmartCompetition.__data__['train'])
+    key = pd.read_csv(WalmartCompetition.__data__['key'])
+    weather = pd.read_csv(WalmartCompetition.__data__['weather'])

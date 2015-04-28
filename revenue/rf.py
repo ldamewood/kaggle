@@ -3,7 +3,7 @@
 import numpy as np
 import progressbar
 
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
 from sklearn.cross_validation import StratifiedShuffleSplit
 
 from revenue import RevenueCompetition, RevenueTransform
@@ -12,10 +12,8 @@ from xgboost import XGBClassifier
 if __name__ == '__main__':
         
     train_size = 0.75
-    cls = XGBClassifier(max_depth=10, learning_rate=0.05, n_estimators=100,
-                        silent=False)
-    reg = RandomForestRegressor(n_estimators=20, max_features=5,
-                                 random_state=0, max_depth=4,
+    cls = RandomForestClassifier()
+    reg = RandomForestRegressor(n_estimators=20, max_features=5, max_depth=None,
                                  min_samples_split=2, min_samples_leaf=1,
                                  max_leaf_nodes=None, bootstrap=True,
                                  oob_score=False, n_jobs=-1)
@@ -28,7 +26,7 @@ if __name__ == '__main__':
     full_df = train_df_orig.append(test_df_orig)
     
     print("Transforming...")
-    tr = RevenueTransform(rescale=True)
+    tr = RevenueTransform(rescale=False)
     tr.fit(full_df)
     X = tr.transform(train_df_orig).values
 
@@ -38,7 +36,7 @@ if __name__ == '__main__':
     ys = ly.std()
     s = np.empty(ly.shape[0])
     s[(ly-ym)/ys <= -2] = 0
-    s[np.logical_and((ly-ym)/ys > -2,(ly-ym)/ys <= -1)] = -1
+    s[np.logical_and((ly-ym)/ys > -2,(ly-ym)/ys <= -1)] = 1
     s[np.logical_and((ly-ym)/ys > -1,(ly-ym)/ys <= 1)] = 2
     s[np.logical_and((ly-ym)/ys > 1,(ly-ym)/ys <= 2)] = 3
     s[(ly-ym)/ys > 2] = 4
@@ -80,11 +78,11 @@ if __name__ == '__main__':
     print("Regression mse:")
     print(np.mean(mse), np.std(mse)/np.sqrt(len(y_valid)))
 
-    print('Fit with all data')    
+    print('Fit with all data')
     reg.fit(X,y)
     imporder = reg.feature_importances_.argsort()[::-1]
     for c,v in zip(tr.transform(train_df).columns.values[imporder], reg.feature_importances_[imporder]):
-        print('{} : \t {}'.format(c,v))
+        print('{} : {}'.format(c,v))
     
     print('Transform test set...')
     test_df = test_df_orig.copy()
@@ -98,4 +96,4 @@ if __name__ == '__main__':
 
     print('Predict test set...')
     yp = reg.predict(X)
-    RevenueCompetition.save_data(yp, 'data/submit_20150426_01.csv')
+    RevenueCompetition.save_data(yp, 'data/revenue_20150426_01.csv')

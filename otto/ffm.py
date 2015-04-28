@@ -9,9 +9,13 @@ import csv
 from subprocess import check_call
 
 from sklearn.preprocessing import LabelBinarizer
-from sklearn.cross_validation import StratifiedKFold
+from sklearn.cross_validation import StratifiedKFold, train_test_split
 
-class FFMFormat(object):
+class FFMClassifier:
+    def __init__(self):
+        pass
+
+class FFMFormat:
     def __init__(self):
         self.field_index_ = None
         self.feature_index_ = None
@@ -61,13 +65,9 @@ if __name__ == '__main__':
 
     y = train_df['target']
     del train_df['target']
-    lb = LabelBinarizer()
-    encoded_y = lb.fit_transform(y)
 
-    test_df = pd.read_csv(OttoCompetition.__test__, index_col='id')
-    full_df = train_df.append(test_df)
     tr = FFMFormat()
-    tr.fit(full_df)
+    train_ffm = tr.fit_transform(train_df)
     
     ffm_params = [
         '--norm',
@@ -78,28 +78,30 @@ if __name__ == '__main__':
         '-s', '8', # num threads
     ]
     
-    y_index = np.array([lb.classes_.tolist().index(i) for i in y])
-    train_ffm = tr.transform(train_df)
+    Xt, X_test, yt, y_test = train_test_split(train_ffm.values, y.values, test_size = 0.2)
+    
     ll = []
-    for i, (train_index, valid_index) in enumerate(StratifiedKFold(y, n_folds = 10, random_state=0)):
+    for i, (train_index, valid_index) in enumerate(StratifiedKFold(yt, n_folds = 10, random_state=0)):
         print('Fold {}'.format(i))
-        X_train, X_valid = train_ffm.values[train_index], train_ffm.values[valid_index]
-        y_train, y_valid = y.values[train_index], y.values[valid_index]
+        X_train, X_valid = Xt[train_index], Xt[valid_index]
+        y_train, y_valid = yt[train_index], yt[valid_index]
         valid_set = []
-        for j in xrange(encoded_y.shape[1]):
-            print(lb.classes_[j])
-            tdf = pd.DataFrame(np.vstack([encoded_y[train_index,j],X_train]).T)
-            vdf = pd.DataFrame(np.vstack([encoded_y[valid_index,j],X_valid]).T)
-            train_file = './data/ffm_train_fold_{}_{}.csv'.format(i, lb.classes_[j])
-            valid_file = './data/ffm_valid_fold_{}_{}.csv'.format(i, lb.classes_[j])
-            model_file = './data/ffm_model_fold_{}_{}.csv'.format(i, lb.classes_[j])
-            predt_file = './data/ffm_predt_fold_{}_{}.csv'.format(i, lb.classes_[j])
+        lb = LabelBinarizer()
+        ybin = lb.fit_transform(yt)
+        for ylabel in lb.classes_:
+            print(ylabel)
+            tdf = pd.DataFrame(np.vstack([(y_train == ylabel).T,X_train.T]).T)
+            vdf = pd.DataFrame(np.vstack([(y_valid == ylabel).T,X_valid.T]).T)
+            train_file = './data/ffm_train_fold_{}_{}.csv'.format(i, ylabel)
+            valid_file = './data/ffm_valid_fold_{}_{}.csv'.format(i, ylabel)
+            model_file = './data/ffm_model_fold_{}_{}.csv'.format(i, ylabel)
+            predt_file = './data/ffm_predt_fold_{}_{}.csv'.format(i, ylabel)
             tdf.to_csv(train_file, sep=" ", header=False, index=False,
                        quote=csv.QUOTE_NONE, quotechar=" ")
             vdf.to_csv(valid_file, sep=" ", header=False, index=False,
                        quote=csv.QUOTE_NONE, quotechar=" ")
-            check_call(['./data/ffm-train'] + ffm_params + ['-p', valid_file, train_file, model_file])
-            check_call(['./data/ffm-predict', valid_file, model_file, predt_file])
+            check_call(['ffm-train'] + ffm_params + ['-p', valid_file, train_file, model_file])
+            check_call(['ffm-predict', valid_file, model_file, predt_file])
             valid_set.append(np.loadtxt(predt_file))
             yp = np.array(valid_set).T
             yp = (yp / yp.sum(axis=1)[:, np.newaxis])

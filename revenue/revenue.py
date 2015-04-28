@@ -36,7 +36,7 @@ class RevenueCompetition:
                           index=np.arange(100000))
         df.to_csv(outfile, header = True, index_label='Id')
         if gzip:
-            check_call(['gzip', outfile])
+            check_call(['gzip', '-f', outfile])
 
 class RevenueOutliers:
     def __init__(self, base_estimator, transformer, **params):
@@ -108,7 +108,7 @@ class RevenueTransform:
         # The season
 #        X['Season'] = X['Open Date'].apply(lambda x: util.get_season(dt.strptime(x, "%m/%d/%Y")))
         
-        X['Month'] = X['Open Date'].apply(lambda x: str(dt.strptime(x, "%m/%d/%Y").month))
+        # X['Month'] = X['Open Date'].apply(lambda x: str(dt.strptime(x, "%m/%d/%Y").month))
 
         # Rescale parameters
         if self.rescale:
@@ -121,7 +121,7 @@ class RevenueTransform:
         del X['Open Date']
 
         # Vectorize these columns
-        vectorize = ['Type','City Group','Month']# 'City'
+        vectorize = ['Type','City Group']#,'Month']# 'City'
 
         if self.dictVectorizer_ is None:
             self.dictVectorizer_ = DictVectorizer(sparse=False)
