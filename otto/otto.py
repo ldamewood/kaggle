@@ -13,16 +13,30 @@ from sklearn.preprocessing import StandardScaler
 random.seed(0)
 
 class OttoCompetition:
-    __name__ = 'otto'
-    __train__ = join(dirname(realpath(__file__)), 'data', 'train.csv')
-    __test__ = join(dirname(realpath(__file__)), 'data', 'test.csv')
+    __short_name__ = 'otto'
+    __data__ = {
+        'train': join(dirname(realpath(__file__)), 'data', 'train.csv'),
+        'test': join(dirname(realpath(__file__)), 'data', 'test.csv'),
+        'tsne': join(dirname(realpath(__file__)), 'data', 'tsne.csv'),
+    }
     
     @classmethod
-    def load_data(cls, train = True):
-        df = pd.read_csv(cls.__train__ if train else cls.__test__, 
-                           index_col = 'id')
+    def load_data(cls, train=True, tsne=False):
+        infile = cls.__data__['train'] if train else cls.__data__['test']
+        df = pd.read_csv(infile, index_col = 'id')
+        
+        if tsne:
+            cols = ['V1','V2','V3']
+            tsne = pd.read_csv(cls.__data__['tsne'], index_col=0, header=False, names=cols)
+            if train:
+                for col in cols:
+                    df[col] = tsne.loc[df.index][col].values
+            else:
+                for col in cols:
+                    df[col] = tsne.loc[df.index+61878][col].values
+        
         if 'target' in df.columns:
-            y = df['target']
+            y = df['target'].values
             del df['target']
         else:
             y = None
@@ -40,9 +54,9 @@ class OttoCompetition:
     def save_data(cls, y_pred, gzip=True):
         df = pd.DataFrame(y_pred, columns=['Class_{}'.format(i) for i in range(1,10)],
                           index=np.arange(1,144369))
-        outfile = '{}_submit_{}.csv'.format(cls.__name__, 
+        outfile = '{}_submit_{}.csv'.format(cls.__short_name__, 
                                         datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"))
-        df.to_csv(outfile, header = True, index_label='id')
+        df.to_csv(join(dirname(realpath(__file__)), 'data', outfile), header = True, index_label='id')
         if gzip:
             check_call(['gzip', outfile])
             print('Written to {}.gz'.format(outfile))

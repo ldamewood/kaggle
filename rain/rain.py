@@ -4,32 +4,35 @@ from __future__ import print_function, division
 
 from os.path import join, dirname, realpath
 
-import pystats
 import pandas as pd
 import numpy as np
-import scipy.stats
-import itertools
-
-from csv import DictReader
 
 from kaggle.file import ProgressDictReader
-from kaggle.util import records_groupby
-from subprocess import check_call
-import multiprocessing as mp
 
 class RainCompetition:
     __name__ = 'how-much-did-it-rain'
-    __train__ = join(dirname(realpath(__file__)), 'data', 'train_2013.csv')
-    __test__ = join(dirname(realpath(__file__)), 'data', 'test_2014.csv')
-    __train_split__ = join(dirname(realpath(__file__)), 'data', 'train_split_rows.csv')
-    __test_split__ = join(dirname(realpath(__file__)), 'data', 'test_split_rows.csv')
+    __short_name__ = 'rain'
+    __data__ = {
+        'train': join(dirname(realpath(__file__)), 'data', 'train_2013.csv'),
+        'train_ravel_missing': join(dirname(realpath(__file__)), 'data', 'train_miss.csv'),
+        'train_ravel_imputed': join(dirname(realpath(__file__)), 'data', 'train_inpu.csv'),
+        'train_ravel_imputed_normalized': join(dirname(realpath(__file__)), 'data', 'train_impu_norm.csv'),
+        'test': join(dirname(realpath(__file__)), 'data', 'test_2014.csv'),
+        'test_ravel_missing': join(dirname(realpath(__file__)), 'data', 'test_miss.csv'),
+        'test_ravel_imputed': join(dirname(realpath(__file__)), 'data', 'test_inpu.csv'),
+        'test_ravel_imputed_normalized': join(dirname(realpath(__file__)), 'data', 'test_impu_norm.csv'),
+    }
+    
+    htypes = ['no echo', 'moderate rain', 'moderate rain2', 'heavy rain',
+    'rain/hail', 'big drops', 'AP', 'Birds', 'unknown', 'no echo2',
+    'dry snow', 'wet snow', 'ice crystals', 'graupel', 'graupel2']
 
     nan = float('nan')
     nan_values = [ '-99900.0', '-99901.0', '-99903.0', '999.0' ]
     not_features = [ 'Expected', 'Id' ]
     
     @classmethod    
-    def process_row_(cls, row, deriv=True, group=False, ignore_keys=[]):
+    def process_row_(cls, row, deriv=True, ignore_keys=[]):
         """
         Process the csv file and do transformations:
             * Split the time series.
@@ -60,11 +63,11 @@ class RainCompetition:
         dx = [x[i] - x[i-1] for i in xrange(ntime)]
         
         # Add group index
-        j = -1
-        record['Group'] = []
-        for i in xrange(ntime):
-            if dx[i] > 0: j+=1
-            record['Group'].append(j)
+#        j = -1
+#        record['Group'] = []
+#        for i in xrange(ntime):
+#            if dx[i] > 0: j+=1
+#            record['Group'].append(j)
         record['Index'] = range(ntime)
         
         for f, value in record.items():
@@ -75,7 +78,7 @@ class RainCompetition:
             
             if deriv:
                 # Don't take derivative of some features
-                if f in [ 'TimeToEnd', 'HydrometeorType', 'Group', 'Index', 'Id' ]: continue
+                if f in [ 'TimeToEnd', 'HydrometeorType', 'Index', 'Id' ]: continue
                 
                 # Segment may contain multiple time series. They are separated 
                 # by an increase in the TimeToEnd value. If dx < 0, then
@@ -88,18 +91,13 @@ class RainCompetition:
 #                        record['{}_deriv'.format(f)][i] = (value[i] - value[i-1])/dx[i]
                     
                 record['{}_deriv'.format(f)] = [0 if (dx[i] >= 0 or np.isnan(value[i]) or np.isnan(value[i-1])) else (value[i] - value[i-1])/dx[i] for i in range(ntime)]
-                
-        
-        htypes = ['no echo', 'moderate rain', 'moderate rain2', 'heavy rain',
-            'rain/hail', 'big drops', 'AP', 'Birds', 'unknown', 'no echo2',
-            'dry snow', 'wet snow', 'ice crystals', 'graupel', 'graupel2']
         
         # This part is akward. ;)
-        for ht in htypes:
+        for ht in cls.htypes:
             record[ht] = []
         for htval in record['HydrometeorType']:
-            for ht in htypes:
-                record[ht].append(True) if htypes[int(htval)] == ht else record[ht].append(False)
+            for ht in cls.htypes:
+                record[ht].append(True) if cls.htypes[int(htval)] == ht else record[ht].append(False)
         del record['HydrometeorType']
     
         return record
@@ -108,65 +106,63 @@ class RainCompetition:
     def read_csv_(cls, filename, deriv=True, group=False, ignore_keys=[]):
         for row in ProgressDictReader(open(filename)):
             yield pd.DataFrame(cls.process_row_(row))
-    
-#    @classmethod
-#    def group_data_(cls, records):
-#        for r in records:
-#            for grp in records_groupby(r, 'group'):
-#                df = {}
-#                t = grp['TimeToEnd']
-#                for k,v in grp.iteritems():
-#                    df['{}_mean'.format(k)] = np.mean(v)
-#                    df['{}_std'.format(k)] = np.std(v)
-#                    df['{}_min'.format(k)] = np.min(v)
-#                    df['{}_max'.format(k)] = np.max(v)
-#                    df['{}_range'.format(k)] = np.max(v) - np.min(v)
-#                    slope, intercept, r_value, p_value, std_err = scipy.stats.linregress(v,t)
-#                    df['{}_slope'.format(k)] = slope
-#                    df['{}_intercept'.format(k)] = intercept
-#                yield df    
-    
-#    @classmethod
-#    def find_ignorable_features(cls, deriv=True, group=False, stdmin=1.e-5, n_threads=2):
-#        fstats={}        
-#        for df in cls.read_csv_(cls.__train__, deriv=deriv):
-#            for key,val in df.iteritems():
-#                if key not in fstats:
-#                    fstats[key] = pystats.Accumulator()
-#                for v in val:
-#                    fstats[key].push(v)
-#                # TODO: Update Accumulator to accept push(<list>)
-#        return [key for key,col in fstats.iteritems() if col.std() < stdmin]
 
     @classmethod
-    def process_df(cls, outfile, train=True, ignore_keys=[], deriv=True, group=False):
-        with open(outfile, 'w') as out:
-            for i, chunk in enumerate(cls.read_csv_(RainCompetition.__train__ if train else RainCompetition.__test__, ignore_keys=ignore_keys, deriv=deriv, group=group)):
-                chunk.set_index(['Id', 'Group', 'Index'], inplace=True)
-                if i==0: 
-                    chunk.to_csv(out, float_format='%e', index_label=['Id', 'Group', 'Index'], header=True)
+    def ravel_(cls, train=True):
+        index = ['Id', 'Index']
+        filein = cls.__data__['train'] if train else cls.__data__['test']
+        fileout = cls.__data__['train_ravel_missing'] if train else cls.__data__['test_ravel_missing']
+        with open(fileout, 'w') as out:
+            for i, chunk in enumerate(cls.read_csv_(filein)):
+                chunk.set_index(index, inplace=True)
+                if i==0:
+                    chunk.to_csv(out, float_format='%e', index_label=index, header=True)
                 else:
-                    chunk.to_csv(out, float_format='%e', index_label=['Id', 'Group', 'Index'], header=False)
-#        check_call(['gzip', '-f', outfile])
-#                    
-#
-#    @classmethod
-#    def read_df_(cls, train=True, ignore_keys=[], deriv=True, group=False):
-#        for df in cls.read_csv_(cls.__train__ if train else cls.__test__,
-#                                deriv=deriv, group=group,
-#                                ignore_keys=ignore_keys):
-#            yield pd.DataFrame(df)
-#
-#    @classmethod
-#    def load_data(cls, train=True, ignore_keys=[], deriv=True, group=False):
-#        return pd.concat(cls.read_df_(train=train, ignore_keys=ignore_keys,
-#                                      deriv=deriv, group=group))
-#
-#    @classmethod
-#    def save_data(cls, df, filename):
-#        df.to_csv(filename, index = False)
-#        check_call(['gzip', '-f',  filename])
-#        
+                    chunk.to_csv(out, float_format='%e', index_label=index, header=False)
+
+    @classmethod
+    def impute_(cls, train=True):
+        index = ['Id', 'Index']
+        filein = cls.__data__['train_ravel_missing'] if train else cls.__data__['test_ravel_missing']
+        fileout = cls.__data__['train_ravel_imputed'] if train else cls.__data__['test_ravel_imputed']
+        df = pd.read_csv(filein, index_col=index)
+        print('Removing features without variance:')
+        remove = []
+        for col in df.columns:
+            if col in index + ['Expected']:
+                continue
+            if col in cls.htypes:
+                df[col].fillna(False, inplace='True')
+            else:
+                df[col].fillna(df[col].mean(), inplace='True')
+            if df[col].std() < 1.e-5:
+                remove.append(col)
+                print('Removing column {}'.format(col))
+                del df[col]
+        df.to_csv(fileout, float_format='%e', index_label=index, header=True)
+
+    @classmethod
+    def normalize_(cls, train=True):
+        index = ['Id', 'Index']
+        filein = cls.__data__['train_ravel_imputed'] if train else cls.__data__['test_ravel_imputed']
+        fileout = cls.__data__['train_ravel_imputed_normalized'] if train else cls.__data__['test_ravel_imputed_normalized']
+        df = pd.read_csv(filein, index_col=index)
+        for col in df.columns:
+            if col in index + ['Expected'] + cls.htypes:
+                continue
+            mean = df[col].mean()
+            std = df[col].std()
+            df[col] = (df[col] - mean)/std
+        df.to_csv(fileout, float_format='%e', index_label=index, header=True)
+
+    @classmethod
+    def shuffle_(cls, df):
+        n_ids = len(df.index.levels[0].values)
+        neworder = np.array(range(n_ids))
+        np.random.shuffle(neworder)
+        newindex = df.index[ np.argsort(neworder[df.index.labels[0]], kind='mergesort') ]
+        return df.reindex(newindex)
+        
     @classmethod
     def collapse(cls, y, ids):
         cols = ['Predicted{}'.format(i) for i in range(y.shape[1])]
@@ -179,9 +175,26 @@ class RainCompetition:
         x = range(70)
         return np.array([(ypred[:,n] - (n >= ytrue[:,0]))**2 for n in x]).sum()/len(x)/len(ytrue)
 
+def shuffle(filein, fileout):
+    index = ['Id', 'Index']
+    df = RainCompetition.shuffle_(pd.read_csv(filein, index_col=index))
+    df.to_csv(fileout, index_label=index, header=True)
+
 if __name__ == '__main__':
-    print("Pass #2: Processing training data")
-    RainCompetition.process_df(RainCompetition.__train_split__, train=True)
-    print("Pass #3: Processing testing data")
-    RainCompetition.process_df(RainCompetition.__test_split__, train=False)
-    print("Complete!")
+    print('Creating training data...')
+    print('\tRavelling...')
+    RainCompetition.ravel_(train=True)
+    print('\tImputing...')
+    RainCompetition.impute_(train=True)
+    print('\tNormalizing...')
+    RainCompetition.normalize_(train=True)
+    print('\tShuffling...')
+    shuffle(RainCompetition.__data__['train_ravel_imputed_normalized'],
+            'data/train_impu_norm_shuf.csv')
+    print('Creating test data...')
+    print('\tRavelling...')
+    RainCompetition.ravel_(train=False)
+    print('\tImputing...')
+    RainCompetition.impute_(train=False)
+    print('\tNormalizing...')
+    RainCompetition.normalize_(train=False)

@@ -1,86 +1,79 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-"""
-This script uses the xgboost library to train and predict the rain data once
-it is separated into time steps and missing values filled. It will automatically
-do cross-validation and then create a submit file.
-
-Try to be memory efficient by deleting variables that are no longer needed: it
-requires around 32GB of ram depending on the number of extra features.
-"""
+from rain import RainCompetition
 
 import numpy as np
 import pandas as pd
 import xgboost as xgb
 
-from rain import RainCompetition
-from subprocess import check_call
-from sklearn.cross_validation import StratifiedKFold
+np.random.seed(0)
 
-def score(y_pred, dm):
-    y_real = dm.get_float_info('label')
-    ids = dm.get_uint_info('extra_index')
-    yp = RainCompetition.collapse(y_pred, ids)
-    yr = RainCompetition.collapse(y_real, ids)
-    return RainCompetition.score(yp, yr)
+def load_data(shuffle=True):
+    print('Loading training set...')
+    df = pd.read_csv(RainCompetition.__data__['train_ravel_missing'],
+                     index_col=['Id', 'Index'])
+        
+    if shuffle:
+        print('Shuffle data...')
+        n_ids = len(df.index.levels[0].values)
+        neworder = np.array(range(n_ids))
+        np.random.shuffle(neworder)
+        newindex = df.index[ np.argsort(neworder[df.index.labels[0]],
+                                        kind='mergesort') ]
+        return df.reindex(newindex)
+    else:
+        return df
 
-def train_xgboost(train_X, train_y, train_ids, valid_X, valid_y, valid_ids, rounds = 100):
-    xg_train = xgb.DMatrix(train_X, label=train_y, missing=np.nan)
-    xg_train.set_uint_info('extra_index', train_ids)
-    xg_valid = xgb.DMatrix(valid_X, label=valid_y, missing=np.nan)
-    xg_valid.set_uint_info('extra_index', valid_ids)
+def train_xgboost(df, test_size = 0.2, rounds = 1000):
+    print('Training...')
+    features = [col for col in df.columns if col not in ['Expected']]
+    target = 'Expected'
+    split = int(df.shape[0]*test_size)
+    xg_train = xgb.DMatrix( df.iloc[:split][features].values, label=df.iloc[:split][target].values.clip(0,70).astype('int32'), missing=np.nan )
+    xg_valid = xgb.DMatrix( df.iloc[split:][features].values, label=df.iloc[split:][target].values.clip(0,70).astype('int32'), missing=np.nan )
+                
     ## setup parameters for xgboost
     evals = dict()
     params = {
-            'eta': 0.2,
-            'target': 'target',
+            'eta': 0.1,
+            'gamma': 0,
             'max_depth': 11,
-            'min_child_weight': 4,
+            'min_child_weight': 1,
             'subsample': 1,
-            'min_loss_reduction': 1,
-            'column_subsample': 1,
+            'colsample_bytree': 0.5,
+            'target': 'target',
             'validation_set': xg_valid,
             'num_class' : 71,
             'objective': 'multi:softprob',
             'eval:metric': 'mlogloss',
+            'silent': 1,
             }
     
     watchlist = [ (xg_train, 'train'), (xg_valid, 'valid') ]
-    bst = xgb.train(params, xg_train, rounds, watchlist, feval=score,
+    bst = xgb.train(params, xg_train, rounds, watchlist, 
                     early_stopping_rounds=100, evals_result=evals)
-    print(evals)
+    print(min(evals['valid']))
     return bst
 
-#def predict_xgboost(bst, X):
-#    xg = xgb.DMatrix( X, missing = np.nan )
-#    prob_y = bst.predict( xg )
-#    return prob_y
+def do_predict(clf, outfile):
+    print('Predictions...')
+    df_it = pd.read_csv(RainCompetition.__data__['test_ravel_missing'],
+                        index_col=['Group','Index'], iterator=True,
+                        chunksize=2048)
+    y_preds = []
+    ycols = ['Predicted{}'.format(i) for i in range(70)]
+    for i,cnk in enumerate(df_it):
+        print(i)
+        features = [col for col in cnk.columns if col not in ['Expected','Id']]
+        xg_test = xgb.DMatrix(cnk[features].values)
+        y_pred = pd.DataFrame(clf.predict(xg_test)[:,:70], columns=ycols)
+        y_pred['Id'] = cnk['Id'].values
+        y_preds.append(y_pred)
+    y_pred = pd.concat(y_preds).groupby('Id').mean().cumsum(axis=1)
+    y_pred.to_csv(outfile, index_label='Id', float_format='%5.3f')
 
 if __name__ == '__main__':
-    print('Loading data...')
-    train_df = pd.read_csv(RainCompetition.__train_split__, compression='gzip')
-        
-    print('Removing features without variance:')
-    remove = []
-    for col in train_df.columns:
-        if train_df[col].std() < 1.e-5:
-            remove.append(col)
-            print('Removing column {}'.format(col))
-            del train_df[col]
-            
-    X = train_df[[col for col in train_df.columns if col not in ['Id', 'Group', 'Expected']]].values
-    y = np.array(train_df['Expected'], dtype = int).clip(0,70)
-    ids = train_df['Id'].astype('int')
-    
-    del train_df
-    
-    xgbs, crp_score = [], []
-    print('Fitting...')
-    for i, (train_index, valid_index) in enumerate(StratifiedKFold(y, n_folds = 5, random_state=0)):
-        print('Fold {}'.format(i))
-        X_train, X_valid = X[train_index], X[valid_index]
-        y_train, y_valid = y[train_index], y[valid_index]
-        i_train, i_valid = ids[train_index], ids[valid_index]
-        clf, evals = train_xgboost(X_train, y_train, i_train, X_valid, y_valid, i_valid)
-        break
+    df = load_data(shuffle=True)
+    model = train_xgboost(df)
+    do_predict(model, 'data/rain_20150430.csv')

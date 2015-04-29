@@ -23,7 +23,11 @@ class ProgressDictReader(csv.DictReader):
     
     def next(self):
         self.progressbar.update(min(self.progressbar.currval+1, self.progressbar.maxval-1))
-        return csv.DictReader.next(self)
+        try:
+            return csv.DictReader.next(self)
+        except StopIteration:
+            self.progressbar.finish()
+            raise StopIteration
 
 def line_count(filename):
     """
