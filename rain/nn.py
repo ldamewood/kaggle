@@ -26,16 +26,6 @@ class ansi:
     ENDC = '\033[0m'
 
 def do_fit(self, filename):
-    it = pd.read_csv(filename, index_col=['Id', 'Index'], iterator=True,
-                     chunksize=2**10)
-
-    if self.use_label_encoder:
-        self.enc_ = LabelEncoder()
-        self.enc_.fit(range(71))
-        self.classes_ = self.enc_.classes_
-
-    self.initialize()
-
     on_epoch_finished = self.on_epoch_finished
     if not isinstance(on_epoch_finished, (list, tuple)):
         on_epoch_finished = [on_epoch_finished]
@@ -48,13 +38,17 @@ def do_fit(self, filename):
     info = None
     best_valid_loss = np.inf
     best_train_loss = np.inf
-    
-    print("""
+
+    if self.verbose:
+        print("""
  Epoch  |  Train loss  |  Valid loss  |  Train / Val  |  Valid acc  |  Dur
 --------|--------------|--------------|---------------|-------------|-------\
 """)
 
     while epoch < self.max_epochs:
+        it = pd.read_csv(filename, index_col=['Id', 'Index'], iterator=True,
+                         chunksize=2**15)
+
         epoch += 1
 
         train_losses = []
@@ -63,12 +57,10 @@ def do_fit(self, filename):
 
         t0 = time()
 
-        for i,df in enumerate(it):
-            y = df['Expected'].values.clip(0,70).astype('int32')
-            if self.use_label_encoder:
-                y = self.enc_.transform(y).astype(np.int32)
-            X = df[[col for col in df.columns if col not in ['Expected']]].values.astype('float32')
-            X_train, X_valid, y_train, y_valid = train_test_split(X, y, test_size=self.eval_size, random_state=0)
+        for chunk in it:
+            y = chunk['Expected'].values.clip(0,70).astype('int32')
+            X = chunk[[c for c in chunk.columns if c not in ['Expected']]].values.astype('float32')
+            X_train, X_valid, y_train, y_valid = train_test_split(X, y, test_size=self.eval_size)
     
             for Xb, yb in self.batch_iterator_train(X_train, y_train):
                 batch_train_loss = self.train_iter_(Xb, yb)
@@ -78,7 +70,7 @@ def do_fit(self, filename):
                 batch_valid_loss, accuracy = self.eval_iter_(Xb, yb)
                 valid_losses.append(batch_valid_loss)
                 valid_accuracies.append(accuracy)
-    
+
         avg_train_loss = np.mean(train_losses)
         avg_valid_loss = np.mean(valid_losses)
         avg_valid_accuracy = np.mean(valid_accuracies)
@@ -153,4 +145,5 @@ if __name__ == '__main__':
                      EarlyStopping(),
              ],
              max_epochs=10000,)
+    net0.initialize()
     do_fit(net0, 'data/train_impu_norm_shuf.csv')
