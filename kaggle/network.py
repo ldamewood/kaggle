@@ -27,9 +27,10 @@ class EarlyStopping(object):
             raise StopIteration()
 
 class AdaptiveVariable(object):
-    def __init__(self, name, start=0.03, stop=0.000001):
+    def __init__(self, name, start=0.03, stop=0.000001, inc=1.1, dec=0.5):
         self.name = name
         self.start, self.stop = start, stop
+        self.inc, self.dec = inc, dec
     
     def __call__(self, nn, train_history):
         current_valid = train_history[-1]['valid_loss']
@@ -41,9 +42,9 @@ class AdaptiveVariable(object):
         if current_value < self.stop:
             raise StopIteration()
         if current_valid > previous_valid:
-            getattr(nn, self.name).set_value(float32(current_value*0.5))
+            getattr(nn, self.name).set_value(float32(current_value*self.dec))
         else:
-            getattr(nn, self.name).set_value(float32(current_value*1.1))
+            getattr(nn, self.name).set_value(float32(current_value*self.inc))
 
 class AdjustVariable(object):
     def __init__(self, name, start=0.03, stop=0.001):
