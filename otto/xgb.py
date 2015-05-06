@@ -3,7 +3,7 @@
 
 from otto import OttoCompetition
 import numpy as np
-from sklearn.cross_validation import StratifiedKFold
+from sklearn.cross_validation import StratifiedKFold, StratifiedShuffleSplit
 from sklearn.preprocessing import LabelEncoder
 import xgboost as xgb
 
@@ -35,14 +35,33 @@ def train_xgboost(train_X, train_y, valid_X, valid_y, rounds = 1000):
     return bst, evals
 
 if __name__ == '__main__':
-    X, y = OttoCompetition.load_data(train=True, tsne=False)
+    X, y = OttoCompetition.load_data(train=True)
+    X_test, _ = OttoCompetition.load_data(train=False)
     le = LabelEncoder().fit(y)
-    train_idx, valid_idx = next(iter(StratifiedKFold(y, 5)))
-    X_train, X_valid = X[train_idx], X[valid_idx]
-    y_train, y_valid = y[train_idx], y[valid_idx]
-    clf, evals = train_xgboost(X_train, le.transform(y_train),
-                               X_valid, le.transform(y_valid))
-    print(min(evals['valid']))
-    X_test, _ = OttoCompetition.load_data(train=False, tsne=False)
-    y_pred = clf.predict(xgb.DMatrix(X_test))
-    OttoCompetition.save_data(y_pred)
+
+    all_hold = []
+    all_hold_predict = []
+    all_test_predict = []
+    all_weights = []
+    # 20% holdout
+    for i, (data_index, hold_index) in enumerate(StratifiedKFold(y, n_folds = 5, random_state=0)):
+        X_data, X_hold = X[data_index], X[hold_index]
+        y_data, y_hold = y[data_index], y[hold_index]
+        y_hold_predict = []
+        y_test_predict = []
+        # train with 50%, validation with 5%
+        for j, (train_index, valid_index) in enumerate(StratifiedShuffleSplit(y_data, 20, test_size = 0.05, train_size = 0.5, random_state=0)):
+            X_train, X_valid = X_data[train_index], X_data[valid_index]
+            y_train, y_valid = y_data[train_index], y_data[valid_index]
+
+            clf, evals = train_xgboost(X_train, le.transform(y_train),
+                                       X_valid, le.transform(y_valid))
+
+            y_hold_predict.append(clf.predict(xgb.DMatrix(X_hold)))
+            y_test_predict.append(clf.predict(xgb.DMatrix(X_test)))
+            
+        weights = OttoCompetition.prediction_weights(y_hold_predict, y_hold)
+        all_hold.append(y_hold)
+        all_hold_predict.append(y_hold_predict)
+
+    

@@ -58,5 +58,8 @@ target/
 
 .spyderproject
 */data
+*/input
 
 password.yml
+
+*.zip

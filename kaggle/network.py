@@ -26,6 +26,25 @@ class EarlyStopping(object):
             nn.load_weights_from(self.best_weights)
             raise StopIteration()
 
+class AdaptiveVariable(object):
+    def __init__(self, name, start=0.03, stop=0.000001):
+        self.name = name
+        self.start, self.stop = start, stop
+    
+    def __call__(self, nn, train_history):
+        current_valid = train_history[-1]['valid_loss']
+        if len(train_history) > 1:
+            previous_valid = train_history[-2]['valid_loss']
+        else:
+            previous_valid = np.inf
+        current_value = getattr(nn, self.name).get_value()
+        if current_value < self.stop:
+            raise StopIteration()
+        if current_valid > previous_valid:
+            getattr(nn, self.name).set_value(float32(current_value*0.5))
+        else:
+            getattr(nn, self.name).set_value(float32(current_value*1.1))
+
 class AdjustVariable(object):
     def __init__(self, name, start=0.03, stop=0.001):
         self.name = name

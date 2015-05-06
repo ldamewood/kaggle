@@ -67,3 +67,4 @@ def get_season(now):
 def scatter_figure(df, outfile='scatter.png'):
     pd.scatter_matrix(df, figsize=(df.shape[1],df.shape[1]))
     plt.savefig(outfile)
+

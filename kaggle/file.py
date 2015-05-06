@@ -1,8 +1,5 @@
 from __future__ import division
 
-import os
-import multiprocessing as mp
-
 import subprocess
 import progressbar
 import csv
@@ -32,7 +29,7 @@ class ProgressDictReader(csv.DictReader):
 def line_count(filename):
     """
     Count the lines in a file using wc.
-    TODO: use pure python method if this one fails.
+    TODO: use pure python method if this one fails (i.e. Windows)
     """
     p = subprocess.Popen(['wc', '-l', filename], stdout=subprocess.PIPE, 
                                                  stderr=subprocess.PIPE)
@@ -40,3 +37,6 @@ def line_count(filename):
     if p.returncode != 0:
         raise IOError(err)
     return int(result.strip().split()[0])
+
+def to_libsvm(dfin, outfile, target_column, labelEncoder = None):
+    pass

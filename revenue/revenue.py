@@ -4,24 +4,19 @@ from __future__ import print_function, division
 
 import pandas as pd
 import numpy as np
-from kaggle import util
+from kaggle import KaggleCompetition
 
 from time import mktime
 from datetime import datetime as dt
-from scipy.stats import randint as sp_randint
 from subprocess import check_call
 
 from sklearn.feature_extraction import DictVectorizer
-from sklearn.ensemble import GradientBoostingRegressor, BaggingRegressor, GradientBoostingClassifier
-from sklearn.preprocessing import MinMaxScaler, StandardScaler
-from sklearn.pipeline import Pipeline
-from sklearn.neural_network import BernoulliRBM
-from sklearn.grid_search import RandomizedSearchCV
 
 from os.path import join, dirname, realpath
 
-class RevenueCompetition:
-    __name__ = 'restaurant-revenue-prediction'
+class RevenueCompetition(KaggleCompetition):
+    __full_name__ = 'restaurant-revenue-prediction'
+    __short_name__ = 'revenue'
     __train__ = join(dirname(realpath(__file__)), 'data', 'train.csv')
     __test__ = join(dirname(realpath(__file__)), 'data', 'test.csv')
     

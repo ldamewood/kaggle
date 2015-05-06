@@ -73,7 +73,7 @@ if __name__ == '__main__':
         '--norm',
         '-l', '0.005', # regularization
         '-r', '0.05', # learning rate
-        '-k', '30', # factors
+        '-k', '10', # factors
         '-t', '200', # num iterations
         '-s', '8', # num threads
     ]
@@ -92,10 +92,10 @@ if __name__ == '__main__':
             print(ylabel)
             tdf = pd.DataFrame(np.vstack([(y_train == ylabel).T,X_train.T]).T)
             vdf = pd.DataFrame(np.vstack([(y_valid == ylabel).T,X_valid.T]).T)
-            train_file = './data/ffm_train_fold_{}_{}.csv'.format(i, ylabel)
-            valid_file = './data/ffm_valid_fold_{}_{}.csv'.format(i, ylabel)
-            model_file = './data/ffm_model_fold_{}_{}.csv'.format(i, ylabel)
-            predt_file = './data/ffm_predt_fold_{}_{}.csv'.format(i, ylabel)
+            train_file = './ffm/ffm_train_fold_{}_{}.csv'.format(i, ylabel)
+            valid_file = './ffm/ffm_valid_fold_{}_{}.csv'.format(i, ylabel)
+            model_file = './ffm/ffm_model_fold_{}_{}.csv'.format(i, ylabel)
+            predt_file = './ffm/ffm_predt_fold_{}_{}.csv'.format(i, ylabel)
             tdf.to_csv(train_file, sep=" ", header=False, index=False,
                        quote=csv.QUOTE_NONE, quotechar=" ")
             vdf.to_csv(valid_file, sep=" ", header=False, index=False,
