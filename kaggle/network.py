@@ -27,7 +27,7 @@ class EarlyStopping(object):
             raise StopIteration()
 
 class AdaptiveVariable(object):
-    def __init__(self, name, start=0.03, stop=0.000001, inc=1.1, dec=0.5):
+    def __init__(self, name, start=0.03, stop=0., inc=1.1, dec=0.5):
         self.name = name
         self.start, self.stop = start, stop
         self.inc, self.dec = inc, dec

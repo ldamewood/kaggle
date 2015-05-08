@@ -2,7 +2,7 @@
 
 from otto import OttoCompetition, OttoScaler
 import numpy as np
-from sklearn.cross_validation import StratifiedKFold
+from sklearn.cross_validation import StratifiedKFold, StratifiedShuffleSplit
 from sklearn.metrics import log_loss
 from sklearn.svm import SVC
 from sklearn.externals.joblib import Parallel, delayed
@@ -17,12 +17,17 @@ def _fit(estimator, X, y, train, valid):
     score = log_loss(y_valid, estimator.predict_proba(X_valid))
     return estimator, score
 
+"""
+C = 10, score = 0.74926798298890462
+C = 100, score = 
+"""
+
 if __name__ == '__main__':
     params = dict(
+        C=100.,
         probability=True,
         random_state=0,
     )
-    n_folds = 10       
     
     # Identical to StandardScaler using all train and test data.
     scaler = OttoScaler()
@@ -31,6 +36,11 @@ if __name__ == '__main__':
     X, y = OttoCompetition.load_data(train=True)
     X = scaler.transform(X).astype('float')
     n_classes = np.unique(y).shape[0]
+    
+    # Split a holdout set
+    data_idx, hold_idx = next(iter(StratifiedShuffleSplit(y, 1, test_size = 0.1, random_state=0)))
+    X_data, X_hold = X[data_idx], X[hold_idx]
+    y_data, y_hold = y[data_idx], y[hold_idx]
 
     # Test data
     X_test, _ = OttoCompetition.load_data(train=False)
@@ -38,9 +48,9 @@ if __name__ == '__main__':
 
     # CV
     clf = SVC(**params)
-    skf = StratifiedKFold(y, n_folds = n_folds, random_state=0)
-    parallel = Parallel(n_jobs=-1, verbose=True, pre_dispatch='2*n_jobs')
-    blocks = parallel(delayed(_fit)(clone(clf), X, y, train, valid) for train, valid in skf)
+    skf = StratifiedKFold(y_data, n_folds=8, random_state=0)
+    parallel = Parallel(n_jobs=8, verbose=True, pre_dispatch='2*n_jobs')
+    blocks = parallel(delayed(_fit)(clone(clf), X_data, y_data, train, valid) for train, valid in skf)
 
     clfs = [c for c, _ in blocks]
     scores = np.array([s for _, s in blocks])
@@ -48,17 +58,18 @@ if __name__ == '__main__':
     
     # Do predictions on test set
     bs = 2**10
-    y_preds = np.zeros([len(clfs), X_test.shape[0], n_classes])
+    y_preds = np.zeros([len(clfs), X_hold.shape[0], n_classes])
     for i, clf in enumerate(clfs):
-        for j in xrange((X_test.shape[0] + bs + 1) // bs):
+        for j in xrange((X_hold.shape[0] + bs + 1) // bs):
             s = slice(bs * j, bs * (j+1))
-            y_preds[i, s,:] = clf.predict_proba(X_test[s, :])
+            y_preds[i, s,:] = clf.predict_proba(X_hold[s, :])
 
     # Average the softmax outcomes from n_estimators
     # y_preds => [n_estimators, n_rows, n_classes]
     y_preds = np.exp(np.log(y_preds).mean(axis=0))
     row_sums = y_preds.sum(axis=1)
     y_preds = y_preds / row_sums[:, np.newaxis]
+    print(log_loss(y_hold, y_preds))
     
 #    for i, (train_index, valid_index) in enumerate(skf):
 #        print('Fold {}'.format(i))

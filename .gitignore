@@ -59,6 +59,7 @@ target/
 .spyderproject
 */data
 */input
+.idea
 
 password.yml
 

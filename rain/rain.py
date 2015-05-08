@@ -324,3 +324,6 @@ def shuffle(filein, fileout):
     df = RainCompetition.shuffle_(pd.read_csv(filein, index_col=index))
     df.to_csv(fileout, index_label=index, header=True)
 
+def inv_cumsum(M):
+    X = np.c_[M, np.ones(M.shape[0])]
+    return np.c_[X[:,0], np.diff(X)]

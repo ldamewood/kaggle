@@ -3,6 +3,10 @@ from __future__ import division
 import subprocess
 import progressbar
 import csv
+import pandas as pd
+import numpy as np
+
+from sklearn.feature_extraction import FeatureHasher
 
 class ProgressDictReader(csv.DictReader):
     """
@@ -40,3 +44,22 @@ def line_count(filename):
 
 def to_libsvm(dfin, outfile, target_column, labelEncoder = None):
     pass
+
+def dump_libffm_format(X, y, f):
+    one_based = True
+    hasher = FeatureHasher(input_type='string', non_negative=True)
+    Xt = hasher.transform(X)
+    value_pattern = u'%d:%d:%.16g'
+    line_pattern = u'%d %s\n'
+    for i in xrange(Xt.shape[0]):
+        span = slice(Xt.indptr[i], Xt.indptr[i+1])
+        row = zip(range(len(Xt.indices[span])), Xt.indices[span], Xt.data[span])
+        s = " ".join(value_pattern % (j + one_based, fe, x) for j, fe, x in row)
+        feat = (y[i], s)
+        f.write((line_pattern % feat).encode('ascii'))
+        
+def combine_result_files(files, index_col='Id'):
+    all_preds = np.array([pd.read_csv(f, index_col=index_col).values for f in files])
+    all_preds = np.exp(np.log(all_preds).mean(axis=0))
+    all_preds /= all_preds.sum(axis=1)[:, np.newaxis]
+    return all_preds

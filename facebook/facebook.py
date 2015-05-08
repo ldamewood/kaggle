@@ -13,8 +13,8 @@ class FacebookCompetition(KaggleCompetition):
         'bids': join(dirname(realpath(__file__)), __data_path__, 'bids.csv'),
     }
 
-if __name__ == '__main__':
-    bids = pd.read_csv(FacebookCompetition.__data__['bids'], index_col='bid_id')
-    train = pd.read_csv(FacebookCompetition.__data__['train'])
-    tr = bids.merge(train)
-    
+#if __name__ == '__main__':
+#    bids = pd.read_csv(FacebookCompetition.__data__['bids'], index_col='bid_id')
+#    train = pd.read_csv(FacebookCompetition.__data__['train'])
+#    tr = bids.merge(train)
+#    
