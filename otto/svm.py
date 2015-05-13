@@ -66,10 +66,11 @@ if __name__ == '__main__':
 
     # Average the softmax outcomes from n_estimators
     # y_preds => [n_estimators, n_rows, n_classes]
-    y_preds = np.exp(np.log(y_preds).mean(axis=0))
-    row_sums = y_preds.sum(axis=1)
-    y_preds = y_preds / row_sums[:, np.newaxis]
-    print(log_loss(y_hold, y_preds))
+    eps = 1.e-15
+    y_preds_all = np.array([[[0.,1.,0.]],[[1./3,1./3,1./3]],[[1./2,0.,1./2]]])
+    y_preds_avg = np.exp(np.log(y_preds_all.clip(eps, 1-eps)).mean(axis=0))
+    row_sums = y_preds_avg.sum(axis=1)
+    y_preds_avg = y_preds_avg / row_sums[:, np.newaxis]
     
 #    for i, (train_index, valid_index) in enumerate(skf):
 #        print('Fold {}'.format(i))
