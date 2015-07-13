@@ -4,20 +4,26 @@ import numpy as np
 import pandas as pd
 
 from sklearn.preprocessing import LabelBinarizer
+from sklearn.preprocessing import label_binarize
 
 from facebook import FacebookCompetition
 
+
 def time_since_last(x):
-    return np.r_[np.nan,np.diff(x/1.e10)]
+    return np.r_[np.nan, np.diff(x)]
+
 
 def num_prev_log1px(x):
     return np.log(1+np.array(range(len(x)))) 
 
+
 def num_prev(x):
     return np.array(range(len(x)))
 
+
 def count(x):
     return x.count()
+
 
 if __name__ == '__main__':  
     group_features = ['device', 'country', 'ip', 'url']
@@ -31,6 +37,10 @@ if __name__ == '__main__':
     print("Normalizing countries")
     bids.loc[bids['country'].isnull(), 'country'] = 'zz'
     bids.loc[bids.country == 'gb', 'country'] = 'uk'
+
+    unique_devices = bids.device.unique()
+    groups = bids.groupby('bidder_id')
+    groups['device'].transform(lambda x: label_binarize(x, classes=unique_devices))
 
     print("Bidder groups")
     groups = bids.groupby('bidder_id')
@@ -68,4 +78,3 @@ if __name__ == '__main__':
     bids.to_csv('data/bids_with_features.csv')
     
     bids.fillna(0, inplace=True)
-    

@@ -23,7 +23,7 @@ from nolearn.lasagne import NeuralNet
 
 if __name__ == '__main__':
     encoder = LabelEncoder()
-    
+
     # Identical to StandardScaler using all train and test data.
     scaler = StandardScaler()
 
@@ -45,36 +45,35 @@ if __name__ == '__main__':
     X_test, _ = OttoCompetition.load_data(train=False)
     X_test = scaler.transform(X_test).astype('float32')
 
-
     np.random.seed(0)
-    
+
     print("Training model...")
-    net = NeuralNet(layers= [ ('input', InputLayer),
-                              ('dense1', DenseLayer),
-                              ('dropout1', DropoutLayer),
-                              ('dense2', DenseLayer),
-                              ('dropout2', DropoutLayer),
-                              ('dense3', DenseLayer),
-                              ('output', DenseLayer)],
-             input_shape=(None, n_features),
-             dense1_num_units=512,
-             dropout1_p=0.5,
-             dense2_num_units=512,
-             dropout2_p=0.5,
-             dense3_num_units=512,
-             output_num_units=n_classes,
-             output_nonlinearity=softmax,
-             update=nesterov_momentum,
-             eval_size=0.1,
-             verbose=1,
-             update_learning_rate=theano.shared(float32(0.001)),
-             update_momentum=theano.shared(float32(0.9)),
-             on_epoch_finished=[
-                 AdjustVariable('update_learning_rate', start=0.001, stop=0.000001),
-                 AdjustVariable('update_momentum', start=0.9, stop=0.999),
-                 EarlyStopping(patience=100),
-             ],
-             max_epochs=10000,)
+    net = NeuralNet(layers=[('input', InputLayer),
+                            ('dense1', DenseLayer),
+                            ('dropout1', DropoutLayer),
+                            ('dense2', DenseLayer),
+                            ('dropout2', DropoutLayer),
+                            ('dense3', DenseLayer),
+                            ('output', DenseLayer)],
+                    input_shape=(None, n_features),
+                    dense1_num_units=512,
+                    dropout1_p=0.5,
+                    dense2_num_units=512,
+                    dropout2_p=0.5,
+                    dense3_num_units=512,
+                    output_num_units=n_classes,
+                    output_nonlinearity=softmax,
+                    update=nesterov_momentum,
+                    eval_size=0.1,
+                    verbose=1,
+                    update_learning_rate=theano.shared(float32(0.001)),
+                    update_momentum=theano.shared(float32(0.9)),
+                    on_epoch_finished=[
+                        AdjustVariable('update_learning_rate', start=0.001, stop=0.0001),
+                        AdjustVariable('update_momentum', start=0.9, stop=0.999),
+                        EarlyStopping(patience=50),
+                    ],
+                    max_epochs=10000, )
 
     scores = []
     n_iter = 10
@@ -85,9 +84,10 @@ if __name__ == '__main__':
         y_train, y_valid = y_data[train_index], y_data[valid_index]
         clf = clone(net).fit(X_train, y_train)
         y_valid_pred = clf.predict_proba(X_valid)
-        y_hold_pred[i,:,:] = clf.predict_proba(X_hold)
-        y_test_pred[i,:,:] = clf.predict_proba(X_test)
+        y_hold_pred[i, :, :] = clf.predict_proba(X_hold)
+        y_test_pred[i, :, :] = clf.predict_proba(X_test)
         scores.append(log_loss(y_valid, y_valid_pred))
-    print('CV:',np.mean(scores), np.std(scores))
+    print('CV:', np.mean(scores), np.std(scores))
+    # 0.5, 0.5 = 0.4957867948410552 / 0.011435887874397251
     np.save('nn_hold_pred', y_hold_pred)
     np.save('nn_test_pred', y_test_pred)

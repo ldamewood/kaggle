@@ -2,6 +2,8 @@
 from os.path import join, dirname, realpath
 import pandas as pd
 from kaggle import KaggleCompetition
+import numpy as np
+
 
 class FacebookCompetition(KaggleCompetition):
     __short_name__ = 'facebook'
@@ -13,8 +15,12 @@ class FacebookCompetition(KaggleCompetition):
         'bids': join(dirname(realpath(__file__)), __data_path__, 'bids.csv'),
     }
 
-#if __name__ == '__main__':
-#    bids = pd.read_csv(FacebookCompetition.__data__['bids'], index_col='bid_id')
-#    train = pd.read_csv(FacebookCompetition.__data__['train'])
-#    tr = bids.merge(train)
-#    
+
+if __name__ == '__main__':
+    bids = pd.read_csv(FacebookCompetition.__data__['bids'], index_col='bid_id')
+    train = pd.read_csv(FacebookCompetition.__data__['train'])
+    test = pd.read_csv(FacebookCompetition.__data__['test'])
+    tr = bids.merge(train)
+    te = bids.merge(test)
+
+    cols = ['auction', 'merchandise', 'device', 'country', 'ip', 'url']

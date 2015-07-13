@@ -5,6 +5,7 @@ from __future__ import print_function, division
 import pandas as pd
 import numpy as np
 
+from sklearn.calibration import CalibratedClassifierCV
 from sklearn.cross_validation import StratifiedKFold, StratifiedShuffleSplit
 from sklearn.metrics import roc_auc_score
 
@@ -12,15 +13,54 @@ from facebook import FacebookCompetition
 import xgboost as xgb
 
 def auc_score(y_real, y_pred, ids):
-    df = pd.DataFrame({ 'y_real' : y_real, 'y_pred' : y_pred, 'bidder_id': ids})
-    df = df.groupby('bidder_id').mean()
-    return roc_auc_score(df['y_real'].values, df['y_pred'].values)   
+    yr = collapse(y_real, ids)
+    yp = collapse(y_pred, ids)
+    return roc_auc_score(yr, yp)
 
-def fpreproc(dtrain, dtest, param):
-    label = dtrain.get_label()
-    ratio = float(np.sum(label == 0)) / np.sum(label==1)
-    param['scale_pos_weight'] = ratio
-    return (dtrain, dtest, param)
+def collapse(X, ids):
+    df = pd.DataFrame({ 'X' : X, 'id': ids})
+    df = df.groupby('id').mean()
+    return df['X'].values
+
+def do_train(data, bids, params, eval_size=0.05):
+    mindex = ['bidder_id', 'bid_id']
+    y = data['outcome'].values.astype('int')
+    sss = StratifiedShuffleSplit(y, 1, test_size=eval_size, random_state=0)
+    train_idx, evalu_idx = next(iter(sss))
+    train = data.iloc[train_idx]
+    evalu = data.iloc[evalu_idx]
+    tr = pd.merge(train, bids).set_index(mindex)
+    ev = pd.merge(evalu, bids).set_index(mindex)
+
+    X_train = tr.drop('outcome',axis=1).values.astype('float')
+    y_train = tr['outcome'].values.astype('int')
+    X_eval = ev.drop('outcome',axis=1).values.astype('float')
+    y_eval = ev['outcome'].values.astype('int')
+    dtrain = xgb.DMatrix(X_train, label=y_train, missing=np.nan)
+    deval = xgb.DMatrix(X_eval, label=y_eval, missing=np.nan)
+    ratio = float(np.sum(y_train == 0)) / np.sum(y_train==1)
+    params['scale_pos_weight'] = ratio
+    
+    def logregobj(preds, dtrain):
+        labels = dtrain.get_label()
+        preds = 1.0 / (1.0 + np.exp(-preds))
+        grad = preds - labels
+        hess = preds * (1.0-preds)
+        return grad, hess
+    
+    def evalerror(preds, dtrain):
+        labels = dtrain.get_label()
+        if len(labels) == tr.shape[0]:
+            ids = map(lambda x: x[0], tr.index.ravel())
+        else:
+            ids = map(lambda x: x[0], ev.index.ravel())
+        return 'auc', -auc_score(labels, preds, ids)
+    
+    params['validation_set'] = deval
+    evals = dict()
+    watchlist = [ (dtrain, 'train'), (deval, 'eval') ]
+    return xgb.train(params, dtrain, 1000, watchlist, feval=evalerror, obj=logregobj, 
+                    early_stopping_rounds=25, evals_result=evals)
 
 if __name__ == '__main__':
     drop_features = ['address', 'payment_account']
@@ -32,7 +72,8 @@ if __name__ == '__main__':
     full = pd.read_csv(FacebookCompetition.__data__['train']).drop(drop_features, axis=1)
     
     print('Splitting data/hold sets')
-    data_idx, hold_idx = next(iter(StratifiedShuffleSplit(full['outcome'].values.astype('int'), 1, random_state=0)))
+    sss = StratifiedShuffleSplit(full['outcome'].values.astype('int'), 1, test_size=0.1, random_state=0)
+    data_idx, hold_idx = next(iter(sss))
     data = full.iloc[data_idx]
     hold = full.iloc[hold_idx]
 
@@ -50,17 +91,18 @@ if __name__ == '__main__':
     
     n_iter = 10
     rounds = 1000
-    
     params = {
-            'eta': 0.0001,
-            'gamma': 0.5,
-            'max_depth': 20,
-            'min_child_weight': 10,
+            'eta': 0.03,
+            'gamma': 0.0,
+            'max_depth': 6,
+            'min_child_weight': 1,
+            'max_delta_step': 0,
             'subsample': 1.00,
-            'colsample_bytree': 0.50,
-            'objective': 'binary:logistic',
+            'colsample_bytree': 0.25,
+            'objective': 'rank:pairwise',
             'eval:metric': 'auc',
             'silent': 1,
+            'seed': 0,
             }
     
     print('Training')
@@ -72,23 +114,17 @@ if __name__ == '__main__':
     
     skf = StratifiedKFold(data['outcome'].astype('int').values, n_iter, random_state=0, shuffle=True)
     for i, (train_idx, valid_idx) in enumerate(skf):
-#        print('Fold {}'.format(i))
-        tr = pd.merge(data.iloc[train_idx], bids).set_index(mindex)
-        va = pd.merge(data.iloc[valid_idx], bids).set_index(mindex)
-
-        X_train = tr.drop('outcome', axis=1).values.astype('float')
-        y_train = tr['outcome'].values.astype('int')
-        X_valid = va.drop('outcome', axis=1).values.astype('float')
-        y_valid = va['outcome'].values.astype('int')
+        print('Fold {}'.format(i))
+        tran = data.iloc[train_idx]
+        vald = data.iloc[valid_idx]        
+        clf = do_train(tran, bids, params)
+        va = vald.merge(bids).set_index(mindex)
         bidder_ids = map(lambda x: x[0], va.index.ravel())
-        ratio = float(np.sum(y_train == 0)) / np.sum(y_train==1)
-        
-        params['scale_pos_weight'] = ratio        
-        dtrain = xgb.DMatrix(X_train, label=y_train, missing=np.nan)
-        dvalid = xgb.DMatrix(X_valid, missing=np.nan)
-        clf = xgb.train(params, dtrain, num_boost_round=rounds, early_stopping_rounds=25)
-        scores.append(auc_score(y_valid, clf.predict(dvalid), bidder_ids))
-#        print(scores[-1])
+        X_valid = va.drop('outcome',axis=1).values.astype('float')
+        y_valid = va['outcome'].values.astype('int')
+        dvalid = xgb.DMatrix(X_valid, label=y_valid, missing=np.nan)
+        scores.append(auc_score(y_valid, clf.predict(dvalid, ntree_limit=clf.best_iteration), bidder_ids))
+        print(scores[-1])
     print(np.mean(scores), np.std(scores))
     
     # bs = 2**15   
